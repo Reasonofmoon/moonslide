@@ -109,7 +109,12 @@ function App() {
       // Backend now returns JSON with download_url
       const serverDownloadUrl = data.download_url
 
-      setDownloadUrl(serverDownloadUrl)
+      // Construct full URL if it's relative
+      const fullDownloadUrl = serverDownloadUrl.startsWith('http')
+        ? serverDownloadUrl
+        : `${API_BASE}${serverDownloadUrl}`
+
+      setDownloadUrl(fullDownloadUrl)
       // We reverted server to pure PPTX download, so we expect .pptx
       setDownloadFilename(file.name.replace(/\.pdf$/i, '.pptx'))
 
