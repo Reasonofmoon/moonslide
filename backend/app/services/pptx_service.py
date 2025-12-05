@@ -11,32 +11,22 @@ class PPTXService:
     def create_pptx_from_ocr(self, pdf_path: str, ocr_result: dict, output_path: str):
         """
         Creates a PPTX file using OCR data and PDF images as background.
+        Optimized for memory: Processes one page at a time.
         """
+        from pdf2image import pdfinfo_from_path, convert_from_path
+        
         prs = Presentation()
         
-        # 1. Convert PDF to images for background
+        # 1. Get total pages without converting (Lightweight)
         try:
-            images = convert_from_path(pdf_path, dpi=150) # 150 DPI for balance
+            info = pdfinfo_from_path(pdf_path)
+            total_pages = info["Pages"]
         except Exception as e:
-            print(f"Error converting PDF to images: {e}")
+            print(f"Error reading PDF info: {e}")
             raise e
 
-        # Set slide size based on first page
-        if images:
-            width, height = images[0].size
-            # 72 DPI is standard for PPTX size calculation in python-pptx usually, 
-            # but we need to match the image aspect ratio.
-            # python-pptx default slide width is 10 inches.
-            
-            # Let's map pixels to EMU using the image DPI (150).
-            # 1 inch = 914400 EMU
-            dpi = 150
-            prs.slide_width = int(width / dpi * 914400)
-            prs.slide_height = int(height / dpi * 914400)
-
-        elements = ocr_result.get("elements", [])
-        
         # Group elements by page
+        elements = ocr_result.get("elements", [])
         pages_elements = {}
         for el in elements:
             page_idx = el.get("page", 1) - 1 # API is 1-indexed usually
@@ -44,10 +34,29 @@ class PPTXService:
                 pages_elements[page_idx] = []
             pages_elements[page_idx].append(el)
 
-        for i, image in enumerate(images):
-            # Save temp image
-            temp_img_path = f"temp_page_{i}.png"
-            image.save(temp_img_path)
+        # 2. Process each page iteratively
+        for i in range(total_pages):
+            # Convert SINGLE page to image (Memory Efficient)
+            # 150 DPI is balanced for screen viewing
+            try:
+                images = convert_from_path(pdf_path, dpi=150, first_page=i+1, last_page=i+1)
+                if not images:
+                    continue
+                image = images[0]
+            except Exception as e:
+                print(f"Error converting page {i+1}: {e}")
+                continue
+
+            # Set slide size based on first page (only once)
+            if i == 0:
+                width, height = image.size
+                dpi = 150
+                prs.slide_width = int(width / dpi * 914400)
+                prs.slide_height = int(height / dpi * 914400)
+
+            # Save temp image as JPEG (Smaller size than PNG)
+            temp_img_path = f"temp_page_{i}.jpg"
+            image.save(temp_img_path, "JPEG", quality=80)
 
             # Create slide
             blank_layout = prs.slide_layouts[6]
@@ -60,6 +69,7 @@ class PPTXService:
             page_elements = pages_elements.get(i, [])
             all_page_text = []
             for el in page_elements:
+                # Need original image dimensions for scaling logic inside this method
                 extracted_text = self._add_element_to_slide(slide, el, prs.slide_width, prs.slide_height, width, height)
                 if extracted_text:
                     all_page_text.append(extracted_text)
@@ -70,9 +80,13 @@ class PPTXService:
                 text_frame = notes_slide.notes_text_frame
                 text_frame.text = "\n\n".join(all_page_text)
 
-            # Cleanup
+            # Cleanup immediately
             if os.path.exists(temp_img_path):
                 os.remove(temp_img_path)
+            
+            # Explicitly delete image object to free RAM
+            del image
+            del images
 
         prs.save(output_path)
         return output_path
