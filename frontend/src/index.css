@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-500 ease-in-out;
+  }
+}
+
+/* Custom Utilities for Glassmorphism Background */
+.bg-blob {
+  @apply absolute rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}

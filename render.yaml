@@ -1,0 +1,15 @@
+services:
+  # Backend Service (Docker)
+  - type: web
+    name: pdf-to-pptx-backend
+    env: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    numInstances: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: UPSTAGE_API_KEY
+        sync: false # User must enter this in dashboard
