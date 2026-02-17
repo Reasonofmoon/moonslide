@@ -1,305 +1,432 @@
-import { useState, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react';
+import ApiKeyInput from './components/ApiKeyInput';
+import Dropzone from './components/Dropzone';
+import SlideSelector from './components/SlideSelector';
+import ProcessingStatus from './components/ProcessingStatus';
+import EditorToolbar from './components/EditorToolbar';
+import SlideEditor from './components/SlideEditor';
+import PropertyInspector from './components/PropertyInspector';
+import ExportOptions from './components/ExportOptions';
+import OnboardingGuide from './components/OnboardingGuide';
+import { loadPdf, renderAllPages, readImageFile } from './services/pdfService';
+import { analyzeSlides } from './services/geminiService';
+import { generatePptx } from './services/pptxService';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+
+const VIEW = {
+  LANDING: 'landing',
+  SELECT: 'select',
+  PROCESSING: 'processing',
+  EDITOR: 'editor',
+};
 
 function App() {
-  const [file, setFile] = useState(null)
-  const [status, setStatus] = useState('idle') // idle, uploading, success, error
-  const [uploadProgress, setUploadProgress] = useState(0) // Mock progress for cute UI
-  const [downloadUrl, setDownloadUrl] = useState('')
-  const [downloadFilename, setDownloadFilename] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
-  const [darkMode, setDarkMode] = useState(false)
-  const [serverStatus, setServerStatus] = useState('sleeping') // sleeping, waking, ready
+  // Core state
+  const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || null);
+  const [file, setFile] = useState(null);
+  const [view, setView] = useState(VIEW.LANDING);
 
-  // API Base URL (Relative for Dev/Proxy, Absolute for Prod)
-  const API_BASE = import.meta.env.VITE_API_URL || ''
+  // Slide data
+  const [slideImages, setSlideImages] = useState([]);
+  const [selectedIndices, setSelectedIndices] = useState([]);
+  const [analyzedSlides, setAnalyzedSlides] = useState([]);
+  const [activeSlideIdx, setActiveSlideIdx] = useState(0);
+  const [selectedElement, setSelectedElement] = useState(null);
 
-  // Initialize Dark Mode based on system preference
+  // Processing state
+  const [processingStage, setProcessingStage] = useState('');
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingTotal, setProcessingTotal] = useState(0);
+
+  // Editor mode & UI
+  const [editorMode, setEditorMode] = useState('design');
+  const [showExport, setShowExport] = useState(false);
+  const [error, setError] = useState('');
+  const [showGuide, setShowGuide] = useState(
+    () => !localStorage.getItem('moonslide_guide_seen')
+  );
+
+  // Auto-dismiss errors after 6 seconds
   useEffect(() => {
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setDarkMode(true)
-    }
-  }, [])
+    if (!error) return;
+    const timer = setTimeout(() => setError(''), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
 
-  // Update HTML class for Dark Mode
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }, [darkMode])
-
-  // Server Wake-up Logic
-  useEffect(() => {
-    const wakeUpServer = async () => {
-      setServerStatus('waking')
-      try {
-        const start = Date.now()
-        // Use full URL if API_BASE is set, otherwise relative (for dev proxy)
-        const res = await fetch(`${API_BASE}/api/health`)
-        if (res.ok) {
-          const elapsed = Date.now() - start
-          // If response was too fast, add a small delay for smoother UI transition
-          if (elapsed < 800) await new Promise(r => setTimeout(r, 800))
-          setServerStatus('ready')
-        } else {
-          throw new Error('Health check failed')
-        }
-      } catch (err) {
-        console.error("Server wake-up failed (retrying in 5s...)", err)
-        // Simple retry logic could go here, for now stick to 'waking' or set error
-        setTimeout(wakeUpServer, 5000)
+  // Handle file selection
+  const handleFileSelect = useCallback(async (selectedFile) => {
+    setFile(selectedFile);
+    setError('');
+    try {
+      let images;
+      if (selectedFile.type === 'application/pdf') {
+        const pdf = await loadPdf(selectedFile);
+        images = await renderAllPages(pdf, 2);
+      } else {
+        const imgData = await readImageFile(selectedFile);
+        images = [{ pageNum: 1, ...imgData }];
       }
+      setSlideImages(images);
+      setSelectedIndices(images.map((_, i) => i));
+      setActiveSlideIdx(0);
+      setView(VIEW.SELECT);
+    } catch (err) {
+      setError(`파일을 로드할 수 없습니다: ${err.message}`);
     }
+  }, []);
 
-    wakeUpServer()
-  }, [])
-
-  // Mock progress animation
-  useEffect(() => {
-    if (status === 'uploading') {
-      const interval = setInterval(() => {
-        setUploadProgress((prev) => (prev >= 90 ? 90 : prev + 10))
-      }, 500)
-      return () => clearInterval(interval)
-    } else if (status === 'success') {
-      setUploadProgress(100)
-    } else {
-      setUploadProgress(0)
-    }
-  }, [status])
-
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0]
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile)
-      setErrorMsg('')
-      setStatus('idle')
-    } else {
-      setFile(null)
-      setErrorMsg('Please select a valid PDF file.')
-    }
-  }
-
-  const handleUpload = async () => {
-    if (!file) return
-
-    setStatus('uploading')
-    setErrorMsg('')
-    setDownloadUrl('')
-
-    const formData = new FormData()
-    formData.append('file', file)
+  // Handle AI analysis
+  const handleAnalyze = useCallback(async () => {
+    if (!apiKey || selectedIndices.length === 0) return;
+    setView(VIEW.PROCESSING);
+    setError('');
 
     try {
-      // Use the Vite proxy for /api -> http://127.0.0.1:8001/api (in Dev)
-      // Or full URL from Env Var (in Prod)
-      const response = await fetch(`${API_BASE}/api/convert`, {
-        method: 'POST',
-        body: formData,
-      })
+      const selectedSlides = selectedIndices.map((i) => slideImages[i]);
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Conversion failed')
+      setProcessingStage('rendering');
+      setProcessingProgress(selectedSlides.length);
+      setProcessingTotal(selectedSlides.length);
+      await new Promise((r) => setTimeout(r, 400));
+
+      setProcessingStage('analyzing');
+      setProcessingProgress(0);
+      setProcessingTotal(selectedSlides.length);
+
+      const analyzed = await analyzeSlides(apiKey, selectedSlides, (done, total) => {
+        setProcessingProgress(done);
+        setProcessingTotal(total);
+      });
+
+      setAnalyzedSlides(analyzed);
+
+      setProcessingStage('generating');
+      setProcessingProgress(1);
+      setProcessingTotal(1);
+      await new Promise((r) => setTimeout(r, 500));
+
+      setActiveSlideIdx(0);
+      setSelectedElement(null);
+      setView(VIEW.EDITOR);
+    } catch (err) {
+      setError(`분석에 실패했습니다: ${err.message}`);
+      setView(VIEW.SELECT);
+    }
+  }, [apiKey, selectedIndices, slideImages]);
+
+  // Export handlers
+  const handleExportPptx = useCallback(async () => {
+    if (analyzedSlides.length === 0) return;
+    const baseName = file?.name?.replace(/\.\w+$/, '') || 'output';
+    const mode = editorMode === 'design' ? 'image' : 'editable';
+    try {
+      await generatePptx(analyzedSlides, mode, `${baseName}_MoonSlide.pptx`);
+    } catch (err) {
+      setError(`PPTX 생성 실패: ${err.message}`);
+    }
+  }, [analyzedSlides, editorMode, file]);
+
+  const handleExportZip = useCallback(async () => {
+    if (analyzedSlides.length === 0) return;
+    try {
+      const zip = new JSZip();
+      const baseName = file?.name?.replace(/\.\w+$/, '') || 'slides';
+      analyzedSlides.forEach((slide, i) => {
+        const imgSrc = slide.dataUrl || slide.imageDataUrl;
+        const base64 = imgSrc.split(',')[1];
+        zip.file(`${baseName}_slide_${String(i + 1).padStart(2, '0')}.png`, base64, { base64: true });
+      });
+      const blob = await zip.generateAsync({ type: 'blob' });
+      saveAs(blob, `${baseName}_고화질이미지.zip`);
+    } catch (err) {
+      setError(`ZIP 생성 실패: ${err.message}`);
+    }
+  }, [analyzedSlides, file]);
+
+  const handleExportLongImage = useCallback(async () => {
+    if (analyzedSlides.length === 0) return;
+    try {
+      const images = await Promise.all(
+        analyzedSlides.map((slide) => {
+          return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.src = slide.dataUrl || slide.imageDataUrl;
+          });
+        })
+      );
+      const maxW = Math.max(...images.map((i) => i.width));
+      const totalH = images.reduce((sum, i) => sum + (i.height * maxW / i.width), 0);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = maxW;
+      canvas.height = totalH;
+      const ctx = canvas.getContext('2d');
+
+      let y = 0;
+      for (const img of images) {
+        const h = img.height * maxW / img.width;
+        ctx.drawImage(img, 0, y, maxW, h);
+        y += h;
       }
 
-      const data = await response.json()
-
-      // Backend now returns JSON with download_url
-      const serverDownloadUrl = data.download_url
-
-      // Construct full URL if it's relative
-      const fullDownloadUrl = serverDownloadUrl.startsWith('http')
-        ? serverDownloadUrl
-        : `${API_BASE}${serverDownloadUrl}`
-
-      setDownloadUrl(fullDownloadUrl)
-      // We reverted server to pure PPTX download, so we expect .pptx
-      setDownloadFilename(file.name.replace(/\.pdf$/i, '.pptx'))
-
-      setStatus('success')
+      canvas.toBlob((blob) => {
+        const baseName = file?.name?.replace(/\.\w+$/, '') || 'output';
+        saveAs(blob, `${baseName}_긴이미지.png`);
+      }, 'image/png');
     } catch (err) {
-      console.error(err)
-      setErrorMsg(err.message || 'An error occurred during conversion.')
-      setStatus('error')
+      setError(`이미지 생성 실패: ${err.message}`);
     }
+  }, [analyzedSlides, file]);
+
+  const handleReset = () => {
+    setFile(null);
+    setSlideImages([]);
+    setSelectedIndices([]);
+    setAnalyzedSlides([]);
+    setActiveSlideIdx(0);
+    setSelectedElement(null);
+    setView(VIEW.LANDING);
+    setError('');
+  };
+
+  // ═══ Element Mutation Handlers ═══
+  const handleUpdateElement = useCallback((slideIdx, elIdx, updates) => {
+    setAnalyzedSlides((prev) => {
+      const copy = prev.map((s) => ({ ...s, elements: [...(s.elements || [])] }));
+      if (copy[slideIdx] && copy[slideIdx].elements[elIdx]) {
+        copy[slideIdx].elements[elIdx] = { ...copy[slideIdx].elements[elIdx], ...updates };
+      }
+      return copy;
+    });
+  }, []);
+
+  const handleAddElement = useCallback((slideIdx, newElement) => {
+    setAnalyzedSlides((prev) => {
+      const copy = prev.map((s) => ({ ...s, elements: [...(s.elements || [])] }));
+      if (copy[slideIdx]) {
+        copy[slideIdx].elements.push(newElement);
+        setSelectedElement(copy[slideIdx].elements.length - 1);
+      }
+      return copy;
+    });
+  }, []);
+
+  const handleDeleteElement = useCallback((slideIdx, elIdx) => {
+    setAnalyzedSlides((prev) => {
+      const copy = prev.map((s) => ({ ...s, elements: [...(s.elements || [])] }));
+      if (copy[slideIdx]) {
+        copy[slideIdx].elements.splice(elIdx, 1);
+      }
+      return copy;
+    });
+    setSelectedElement(null);
+  }, []);
+
+  // ═══════════════════════════════════════
+  // RENDER: Editor View
+  // ═══════════════════════════════════════
+  if (view === VIEW.EDITOR && analyzedSlides.length > 0) {
+    return (
+      <div className="editor-layout">
+        <EditorToolbar
+          fileName={file?.name}
+          slideCount={analyzedSlides.length}
+          mode={editorMode}
+          onModeChange={setEditorMode}
+          onExport={() => setShowExport((v) => !v)}
+          onNewFile={handleReset}
+        />
+
+        {/* Floating error toast */}
+        {error && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-red-50 border border-red-200 rounded-xl px-5 py-3 shadow-md flex items-center gap-3 animate-slide-up max-w-xl">
+            <span className="text-red-500 text-sm">⚠️</span>
+            <p className="text-red-700 text-sm font-medium flex-1">{error}</p>
+            <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 text-base font-bold">✕</button>
+          </div>
+        )}
+
+        <SlideEditor
+          slides={analyzedSlides}
+          activeIndex={activeSlideIdx}
+          onActiveChange={setActiveSlideIdx}
+          onSelectElement={setSelectedElement}
+          selectedElement={selectedElement}
+          mode={editorMode}
+          onUpdateElement={handleUpdateElement}
+          onAddElement={handleAddElement}
+        />
+        <PropertyInspector
+          slide={analyzedSlides[activeSlideIdx]}
+          selectedElement={selectedElement}
+          onUpdateElement={handleUpdateElement}
+          onDeleteElement={handleDeleteElement}
+          activeSlideIdx={activeSlideIdx}
+        />
+
+        {/* Export panel */}
+        {showExport && (
+          <div
+            className="fixed inset-0 z-50"
+            onClick={() => setShowExport(false)}
+          >
+            <div className="absolute inset-0 bg-stone-900/15 backdrop-blur-sm" />
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-white border-t border-stone-200 shadow-2xl rounded-t-2xl animate-slide-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center px-6 pt-4 pb-2">
+                <h3 className="font-bold text-stone-800 text-sm">내보내기 옵션</h3>
+                <button
+                  onClick={() => setShowExport(false)}
+                  className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 transition-colors"
+                >✕</button>
+              </div>
+              <ExportOptions
+                onExportPptx={() => { handleExportPptx(); setShowExport(false); }}
+                onExportZip={() => { handleExportZip(); setShowExport(false); }}
+                onExportLongImage={() => { handleExportLongImage(); setShowExport(false); }}
+                fileName={file?.name || 'output'}
+                slideCount={analyzedSlides.length}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
+  // ═══════════════════════════════════════
+  // RENDER: Landing / Select / Processing
+  // ═══════════════════════════════════════
   return (
-    <div className="min-h-screen relative w-full overflow-hidden flex items-center justify-center transition-colors duration-500 bg-brand-50 dark:bg-slate-900">
-
-      {/* Animated Background Blobs */}
-      <div className="absolute top-0 -left-4 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob dark:bg-purple-900 dark:mix-blend-lighten"></div>
-      <div className="absolute top-0 -right-4 w-72 h-72 bg-yellow-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000 dark:bg-yellow-900 dark:mix-blend-lighten"></div>
-      <div className="absolute -bottom-8 left-20 w-72 h-72 bg-brand-300 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000 dark:bg-brand-900 dark:mix-blend-lighten"></div>
-
-      {/* Theme Toggle */}
-      <button
-        onClick={() => setDarkMode(!darkMode)}
-        className="absolute top-6 right-6 p-3 rounded-full bg-white/30 dark:bg-black/30 backdrop-blur-md border border-white/20 shadow-lg hover:scale-110 transition-transform active:scale-95 z-50 group cursor-pointer"
-      >
-        {darkMode ? (
-          <span className="text-2xl group-hover:rotate-12 transition-transform block">🌙</span>
-        ) : (
-          <span className="text-2xl group-hover:rotate-90 transition-transform block">☀️</span>
-        )}
-      </button>
-
-      {/* Main Glass Card */}
-      <div className="relative w-full max-w-lg mx-4">
-        <div className="absolute inset-0 bg-white/40 dark:bg-black/40 backdrop-blur-2xl rounded-[2.5rem] shadow-2xl border border-white/20"></div>
-
-        <div className="relative p-10 flex flex-col items-center">
-
-          {/* Header */}
-          <div className="mb-8 text-center animate-fade-in relative">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-brand-400 to-brand-600 shadow-lg shadow-brand-500/30 mb-4 transform rotate-3">
-              <span className="text-3xl text-white">✨</span>
-            </div>
-            <h1 className="text-4xl font-extrabold text-slate-800 dark:text-white tracking-tight mb-2">
-              PDF to PPTX
-            </h1>
-            <p className="text-slate-600 dark:text-slate-300 font-medium mb-2">
-              Convert slides to editable magic
-            </p>
-
-            {/* Server Status Indicator */}
-            <div className={`
-              inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all duration-500
-              ${serverStatus === 'ready'
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 scale-100'
-                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 scale-110 animate-pulse'
-              }
-            `}>
-              {serverStatus === 'ready' ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                  Server Ready
-                </>
-              ) : (
-                <>
-                  <span className="text-sm">😴</span>
-                  Waking up server...
-                </>
-              )}
-            </div>
+    <div className="min-h-screen flex flex-col">
+      {/* Navbar */}
+      <nav className="flex items-center justify-between px-6 py-3 border-b border-stone-200 bg-white sticky top-0 z-40">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 9.563C9 9.252 9.252 9 9.563 9h4.874c.311 0 .563.252.563.563v4.874c0 .311-.252.563-.563.563H9.564A.562.562 0 019 14.437V9.564z" />
+            </svg>
           </div>
-
-          {/* Upload Zone */}
-          <div className="w-full relative group">
-            <div className={`
-              relative w-full aspect-[4/3] rounded-3xl border-4 border-dashed transition-all duration-300 flex flex-col items-center justify-center
-              ${file
-                ? 'border-brand-400 bg-brand-50/50 dark:bg-brand-900/20 dark:border-brand-500'
-                : 'border-slate-300 hover:border-brand-400 bg-white/50 hover:bg-white/80 dark:bg-white/5 dark:border-slate-600 dark:hover:border-slate-400'
-              }
-            `}>
-              <input
-                type="file"
-                accept="application/pdf"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
-                onChange={handleFileChange}
-                disabled={serverStatus !== 'ready'}
-              />
-
-              {file ? (
-                <div className="text-center p-6 animate-fade-in">
-                  <div className="text-6xl mb-4 drop-shadow-md">📄</div>
-                  <p className="font-bold text-slate-700 dark:text-slate-200 text-lg break-all line-clamp-2 px-4">{file.name}</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                  <button
-                    className="mt-4 text-xs font-bold text-red-400 hover:text-red-500 transition-colors z-20 relative pointer-events-auto"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setFile(null)
-                    }}
-                  >
-                    Remove File
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center p-6 transition-transform duration-300 group-hover:scale-105">
-                  <div className="text-6xl mb-4 opacity-80 group-hover:opacity-100 transition-opacity">
-                    {serverStatus === 'ready' ? '☁️' : '💤'}
-                  </div>
-                  <p className="font-bold text-slate-600 dark:text-slate-300 text-lg">
-                    {serverStatus === 'ready' ? 'Drop your PDF here' : 'Server is napping...'}
-                  </p>
-                  <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">
-                    {serverStatus === 'ready' ? 'or click to browse' : 'Please wait a moment'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Action Area */}
-          <div className="w-full mt-8 space-y-4">
-            {/* Error Message */}
-            {status === 'error' && (
-              <div className="p-4 rounded-2xl bg-red-100/80 dark:bg-red-900/30 text-red-600 dark:text-red-300 text-sm font-medium text-center animate-fade-in backdrop-blur-sm">
-                ❌ {errorMsg}
-              </div>
-            )}
-
-            {/* Progress Bar */}
-            {status === 'uploading' && (
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-4 overflow-hidden relative">
-                <div
-                  className="bg-brand-500 h-full rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-1"
-                  style={{ width: `${uploadProgress}%` }}
-                >
-                  <div className="w-2 h-2 bg-white/50 rounded-full animate-pulse"></div>
-                </div>
-              </div>
-            )}
-
-            {/* Main Button */}
-            {status === 'success' ? (
-              <a
-                href={downloadUrl}
-                download={downloadFilename}
-                className="group relative w-full py-4 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-400 text-white font-bold text-lg shadow-lg shadow-brand-500/30 hover:shadow-brand-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center overflow-hidden"
-              >
-                <span className="absolute inset-0 w-full h-full bg-white/20 group-hover:translate-x-full transition-transform duration-500 skew-x-12 -translate-x-full"></span>
-                <span className="relative flex items-center gap-2">
-                  Download PowerPoint 🎉
-                </span>
-              </a>
-            ) : (
-              <button
-                onClick={handleUpload}
-                disabled={!file || status === 'uploading' || serverStatus !== 'ready'}
-                className={`w-full py-4 rounded-2xl font-bold text-lg shadow-lg transition-all duration-300 flex items-center justify-center
-                  ${!file || status === 'uploading' || serverStatus !== 'ready'
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-700 dark:text-slate-500'
-                    : 'bg-slate-900 text-white hover:bg-slate-800 hover:scale-[1.02] active:scale-[0.98] dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100'
-                  }
-                `}
-              >
-                {status === 'uploading' ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : serverStatus !== 'ready' ? 'Waking up Server...' : 'Convert Magic ✨'}
-              </button>
-            )}
-
-            {/* Footer */}
-            <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-4">
-              Powered by <span className="font-semibold">Upstage Document AI</span>
-            </p>
-          </div>
-
+          <span className="font-semibold text-stone-800 text-sm">MoonSlide</span>
+          <span className="text-xs text-stone-400 hidden sm:inline">by moonlang.com</span>
         </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowGuide(true)}
+            className="flex items-center gap-1 text-xs text-stone-400 hover:text-teal-600 transition-colors font-medium"
+          >
+            <span>📋</span> 사용 가이드
+          </button>
+          {apiKey && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium bg-emerald-50 px-2.5 py-1 rounded-md">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              AI 연결됨
+            </div>
+          )}
+        </div>
+      </nav>
+
+      <div className="flex-1">
+        {/* ═══ LANDING VIEW ═══ */}
+        {view === VIEW.LANDING && (
+          <div className="max-w-2xl mx-auto py-12 px-6">
+            {/* Hero */}
+            <div className="text-center mb-10 animate-slide-up">
+              <h1 className="text-2xl md:text-4xl font-bold text-stone-900 tracking-tight leading-tight break-keep">
+                깨진 PDF 텍스트를 <span className="text-teal-600">복구</span>하세요
+              </h1>
+              <p className="text-sm text-stone-500 mt-3 max-w-md mx-auto leading-relaxed">
+                AI가 슬라이드의 텍스트 위치와 내용을 자동 감지합니다.
+                디자인을 유지하거나, 내용을 편집하세요.
+              </p>
+            </div>
+
+            {/* Onboarding Guide */}
+            {showGuide && (
+              <div className="mb-6 animate-slide-up-d1">
+                <OnboardingGuide onClose={() => setShowGuide(false)} />
+              </div>
+            )}
+
+            {/* API Key */}
+            {!apiKey && (
+              <div className="mb-6 animate-slide-up-d2">
+                <ApiKeyInput onApiKeySet={setApiKey} />
+              </div>
+            )}
+
+            {/* Dropzone */}
+            {apiKey && (
+              <div className="animate-slide-up-d2">
+                <Dropzone onFileSelect={handleFileSelect} disabled={!apiKey} />
+              </div>
+            )}
+
+            {/* File card */}
+            {file && view === VIEW.LANDING && (
+              <div className="mt-5 bg-white rounded-xl border border-stone-200 px-5 py-4 flex items-center justify-between animate-slide-up-d3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-teal-50 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-stone-800">{file.name}</p>
+                    <p className="text-xs text-stone-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                </div>
+                <button className="btn-primary px-4 py-2 text-sm">분석 시작</button>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-center animate-slide-up">
+                <p className="text-red-600 text-sm font-medium">{error}</p>
+              </div>
+            )}
+
+            {/* Footer line */}
+            <div className="mt-10 text-center">
+              <p className="text-xs text-stone-400">
+                100% 브라우저 기반 · 파일이 외부로 전송되지 않습니다 · <a href="https://moonlang.com" target="_blank" rel="noreferrer" className="text-teal-600 hover:underline">moonlang.com</a>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ SELECT VIEW ═══ */}
+        {view === VIEW.SELECT && (
+          <SlideSelector
+            slides={slideImages}
+            selectedIndices={selectedIndices}
+            onSelectionChange={setSelectedIndices}
+            onAnalyze={handleAnalyze}
+          />
+        )}
+
+        {/* ═══ PROCESSING VIEW ═══ */}
+        {view === VIEW.PROCESSING && (
+          <div className="max-w-lg mx-auto py-16 px-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-8">
+              <ProcessingStatus
+                stage={processingStage}
+                progress={processingProgress}
+                total={processingTotal}
+                onCancel={() => setView(VIEW.SELECT)}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
