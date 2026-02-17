@@ -241,6 +241,7 @@ export default function SlideEditor({
                 height: `${el.h}%`,
                 cursor: dragState?.idx === i ? 'grabbing' : (resizeState ? 'default' : 'grab'),
                 zIndex: isSelected ? 20 : 10,
+                background: el.bgColor || (slide.bgColor || '#ffffff'),
               }}
               onClick={(e) => { e.stopPropagation(); onSelectElement(i); }}
               onDoubleClick={(e) => { e.stopPropagation(); handleDoubleClick(i); }}
@@ -270,7 +271,7 @@ export default function SlideEditor({
                     fontSize: `${Math.max(8, Math.min((el.fontSize || 14) * (imageSize.w / 960 || 1), 28))}px`,
                     fontWeight: el.bold ? 'bold' : 'normal',
                     textAlign: el.align || 'left',
-                    color: 'transparent',
+                    color: el.color || '#333333',
                     lineHeight: 1.3,
                   }}
                 >

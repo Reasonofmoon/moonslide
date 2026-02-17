@@ -219,21 +219,21 @@
     opacity: 1; transform: scale(1);
   }
 
-  /* ─── Text Element Overlay (Editor) ─── */
+  /* ─── Text Element Overlay (Editor) — Opaque sticker ─── */
   .text-element-overlay {
     position: absolute;
-    border: 1.5px dashed rgba(13, 148, 136, 0.5);
-    background: rgba(13, 148, 136, 0.04);
+    border: 1.5px solid transparent;
     cursor: pointer;
     transition: all 0.15s;
   }
-  .text-element-overlay:hover,
+  .text-element-overlay:hover {
+    border-color: rgba(13, 148, 136, 0.4);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  }
   .text-element-overlay.active {
     border-color: var(--teal-600);
-    background: rgba(13, 148, 136, 0.1);
-    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.15);
+    box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);
   }
-  .text-element-overlay.active { border-style: solid; }
   .text-element-overlay .resize-handle {
     position: absolute;
     width: 8px; height: 8px;
