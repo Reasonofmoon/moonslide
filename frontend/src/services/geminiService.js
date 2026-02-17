@@ -10,7 +10,8 @@ const ANALYSIS_PROMPT = `이 슬라이드 이미지를 분석하여 모든 텍�
 - w: 너비 (0~100 퍼센트)
 - h: 높이 (0~100 퍼센트)
 - fontSize: 추정 폰트 크기 (pt)
-- color: 텍스트 색상 (hex, 예: "#333333")
+- color: 텍스트 색상 (hex, 예: "#FFFFFF")
+- bgColor: 텍스트 뒤의 배경 색상 (hex, 예: "#1a1a2e"). 슬라이드 배경이 어두우면 어두운 색, 밝으면 밝은 색으로 정확히 감지
 - bold: 굵기 여부 (true/false)
 - align: 정렬 ("left" | "center" | "right")
 
@@ -21,9 +22,11 @@ const ANALYSIS_PROMPT = `이 슬라이드 이미지를 분석하여 모든 텍�
 4. 퍼센트 기반 좌표 사용 (0~100)
 5. 깨진 텍스트도 최선을 다해 복원
 6. 텍스트가 없는 장식 요소는 무시
+7. bgColor는 반드시 텍스트 영역 뒤의 실제 배경 색상을 감지하세요. 그라데이션이면 가장 주된 색상을 사용
 
 반드시 아래 JSON 형식으로만 응답하세요:
-{ "elements": [ { "type": "...", "content": "...", ... } ] }`;
+{ "elements": [ { "type": "...", "content": "...", "bgColor": "#...", ... } ] }`;
+
 
 /**
  * Classify Gemini API errors into user-friendly messages
