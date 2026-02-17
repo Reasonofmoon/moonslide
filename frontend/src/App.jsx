@@ -11,6 +11,7 @@ import OnboardingGuide from './components/OnboardingGuide';
 import { loadPdf, renderAllPages, readImageFile } from './services/pdfService';
 import { analyzeSlides } from './services/geminiService';
 import { generatePptx } from './services/pptxService';
+import { compositeSlideImage } from './services/compositeService';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -119,9 +120,16 @@ function App() {
   const handleExportPptx = useCallback(async () => {
     if (analyzedSlides.length === 0) return;
     const baseName = file?.name?.replace(/\.\w+$/, '') || 'output';
-    const mode = editorMode === 'design' ? 'image' : 'editable';
     try {
-      await generatePptx(analyzedSlides, mode, `${baseName}_MoonSlide.pptx`);
+      // Composite overlays onto images, then export with composited images
+      const compositedSlides = await Promise.all(
+        analyzedSlides.map(async (slide) => {
+          const compositedUrl = await compositeSlideImage(slide);
+          return { ...slide, imageDataUrl: compositedUrl };
+        })
+      );
+      const mode = editorMode === 'design' ? 'image' : 'editable';
+      await generatePptx(compositedSlides, mode, `${baseName}_MoonSlide.pptx`);
     } catch (err) {
       setError(`PPTX 생성 실패: ${err.message}`);
     }
@@ -132,11 +140,11 @@ function App() {
     try {
       const zip = new JSZip();
       const baseName = file?.name?.replace(/\.\w+$/, '') || 'slides';
-      analyzedSlides.forEach((slide, i) => {
-        const imgSrc = slide.dataUrl || slide.imageDataUrl;
-        const base64 = imgSrc.split(',')[1];
+      for (let i = 0; i < analyzedSlides.length; i++) {
+        const compositedUrl = await compositeSlideImage(analyzedSlides[i]);
+        const base64 = compositedUrl.split(',')[1];
         zip.file(`${baseName}_slide_${String(i + 1).padStart(2, '0')}.png`, base64, { base64: true });
-      });
+      }
       const blob = await zip.generateAsync({ type: 'blob' });
       saveAs(blob, `${baseName}_고화질이미지.zip`);
     } catch (err) {
@@ -147,12 +155,16 @@ function App() {
   const handleExportLongImage = useCallback(async () => {
     if (analyzedSlides.length === 0) return;
     try {
+      // Composite all slides with text overlays
+      const compositedUrls = await Promise.all(
+        analyzedSlides.map(compositeSlideImage)
+      );
       const images = await Promise.all(
-        analyzedSlides.map((slide) => {
+        compositedUrls.map((url) => {
           return new Promise((resolve) => {
             const img = new Image();
             img.onload = () => resolve(img);
-            img.src = slide.dataUrl || slide.imageDataUrl;
+            img.src = url;
           });
         })
       );
