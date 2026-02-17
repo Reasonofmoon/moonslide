@@ -9,6 +9,7 @@ export default function SlideEditor({
   mode,
   onUpdateElement,
   onAddElement,
+  onDeleteElement,
 }) {
   const slide = slides[activeIndex];
   const canvasRef = useRef(null);
@@ -294,6 +295,13 @@ export default function SlideEditor({
                     <span className="bg-teal-600 text-white text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap">
                       더블클릭으로 편집
                     </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (onDeleteElement) onDeleteElement(activeIndex, i); }}
+                      className="bg-red-500 hover:bg-red-600 text-white text-[10px] font-bold w-5 h-5 rounded flex items-center justify-center transition-colors"
+                      title="블록 삭제"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </>
               )}

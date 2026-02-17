@@ -257,6 +257,7 @@ function App() {
           mode={editorMode}
           onUpdateElement={handleUpdateElement}
           onAddElement={handleAddElement}
+          onDeleteElement={handleDeleteElement}
         />
         <PropertyInspector
           slide={analyzedSlides[activeSlideIdx]}
