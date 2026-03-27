@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "NotebookLM 슬라이드 커맨드 헬퍼",
+    "description": "Chrome 웹 스토어와 브라우저에 표시되는 확장 프로그램 이름."
+  },
+  "extensionDescription": {
+    "message": "NotebookLM 슬라이드 수정 프롬프트를 생성, 저장, 주입하는 생산성 도우미 — 218개 디자인 DNA 템플릿 + Gemini Vision AI 지원.",
+    "description": "Chrome 웹 스토어 등록을 위한 확장 프로그램 설명."
+  }
+}

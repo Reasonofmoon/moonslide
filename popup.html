@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NotebookLM Slide Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Light Theme Tokens ── */
+    :root {
+      --bg: #f5f9fc;
+      --panel: #ffffff;
+      --panel-soft: #eef4fa;
+      --line: #d3e1ef;
+      --line-strong: #9bb5cc;
+      --text: #102436;
+      --text-soft: #5f7387;
+      --brand: #0f6cab;
+      --brand-strong: #0b4f7f;
+      --brand-glow: rgba(15, 108, 171, 0.15);
+      --accent: #e67e22;
+      --ok: #1d8f6f;
+      --ok-bg: #e7f8f2;
+      --ok-border: #9fd8c6;
+      --warn: #b4572a;
+      --warn-bg: #fff2ea;
+      --warn-border: #edc8b2;
+      --radius: 14px;
+      --shadow: 0 8px 24px rgba(10, 37, 64, 0.08);
+      --shadow-strong: 0 12px 32px rgba(10, 37, 64, 0.14);
+      --gradient-hero: linear-gradient(150deg, #ffffff 0%, #eaf4fd 100%);
+      --gradient-brand: linear-gradient(140deg, #0f6cab, #0b4f7f);
+      --gradient-body: radial-gradient(circle at 0 0, #d7ebfb 0, transparent 35%),
+                       radial-gradient(circle at 100% 100%, #fbe9da 0, transparent 40%),
+                       var(--bg);
+      --scrollbar-thumb: #c0d2e0;
+    }
+
+    /* ── Dark Theme Tokens ── */
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-soft: #1c2128;
+      --line: #30363d;
+      --line-strong: #484f58;
+      --text: #e6edf3;
+      --text-soft: #8b949e;
+      --brand: #58a6ff;
+      --brand-strong: #79c0ff;
+      --brand-glow: rgba(88, 166, 255, 0.15);
+      --accent: #f0883e;
+      --ok: #3fb950;
+      --ok-bg: #0d2818;
+      --ok-border: #238636;
+      --warn: #f85149;
+      --warn-bg: #2d1012;
+      --warn-border: #da3633;
+      --radius: 14px;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      --shadow-strong: 0 12px 32px rgba(0, 0, 0, 0.4);
+      --gradient-hero: linear-gradient(150deg, #161b22 0%, #1a2332 100%);
+      --gradient-brand: linear-gradient(140deg, #58a6ff, #388bfd);
+      --gradient-body: radial-gradient(circle at 0 0, #0d1b2a 0, transparent 35%),
+                       radial-gradient(circle at 100% 100%, #1a1512 0, transparent 40%),
+                       var(--bg);
+      --scrollbar-thumb: #484f58;
+    }
+
+    /* ── Reset & Base ── */
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 420px;
+      min-height: 640px;
+      color: var(--text);
+      font-family: "Inter", "Pretendard", "Noto Sans KR", "Segoe UI", sans-serif;
+      background: var(--gradient-body);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 0 0 var(--brand-glow); }
+      50% { box-shadow: 0 0 0 6px var(--brand-glow); }
+    }
+
+    .app {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      animation: fadeSlideUp 0.35s ease-out;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: var(--gradient-hero);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 12px;
+      transition: box-shadow 0.2s ease;
+    }
+    .hero:hover { box-shadow: var(--shadow-strong); }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--gradient-brand);
+      color: #fff;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      letter-spacing: 0.5px;
+      font-size: 13px;
+      box-shadow: 0 6px 14px rgba(11, 79, 127, 0.25);
+      transition: transform 0.2s ease;
+    }
+    .brand-icon:hover { transform: scale(1.08) rotate(-3deg); }
+
+    h1 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      font-size: 11px;
+      color: var(--text-soft);
+    }
+
+    .hero-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .status-badge {
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid;
+      transition: all 0.2s ease;
+    }
+    .status-badge.pending { background: var(--panel-soft); border-color: var(--line); color: var(--text-soft); }
+    .status-badge.ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok); }
+    .status-badge.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); }
+
+    .hero-actions {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hero-meta {
+      font-size: 10px;
+      color: var(--text-soft);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .hero-meta .count-badge {
+      background: var(--brand-glow);
+      color: var(--brand);
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-weight: 700;
+      font-size: 10px;
+    }
+
+    /* ── Buttons ── */
+    button { font-family: inherit; }
+
+    .ghost-btn {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 10px;
+      padding: 7px 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .ghost-btn:hover {
+      border-color: var(--line-strong);
+      color: var(--brand-strong);
+      transform: translateY(-1px);
+    }
+
+    .theme-toggle {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text-soft);
+      font-size: 16px;
+      border-radius: 10px;
+      width: 34px;
+      height: 34px;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: all 0.2s ease;
+      line-height: 1;
+    }
+    .theme-toggle:hover {
+      border-color: var(--brand);
+      color: var(--brand);
+      transform: rotate(20deg);
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      background: var(--panel);
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 4px;
+    }
+
+    .tab-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 8px 6px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+    .tab-btn:hover:not(.active) { color: var(--text); background: var(--panel-soft); }
+    .tab-btn.active {
+      background: var(--gradient-brand);
+      color: #fff;
+      box-shadow: 0 4px 12px var(--brand-glow);
+    }
+
+    /* ── Panels ── */
+    .panel {
+      display: none;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+      box-shadow: var(--shadow);
+    }
+    .panel.active {
+      display: block;
+      animation: fadeSlideUp 0.25s ease-out;
+    }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .search-input,
+    .text-input,
+    .select-input,
+    .textarea-input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      font-family: inherit;
+    }
+    .search-input:focus,
+    .text-input:focus,
+    .select-input:focus,
+    .textarea-input:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-glow);
+    }
+
+    .select-input {
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235f7387' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+
+    /* ── Pills ── */
+    .pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text-soft);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .pill:hover { border-color: var(--brand); color: var(--brand); }
+    .pill.active {
+      background: var(--brand-glow);
+      border-color: var(--brand);
+      color: var(--brand-strong);
+    }
+
+    /* ── Template List ── */
+    .template-list {
+      display: grid;
+      gap: 8px;
+      max-height: 340px;
+      overflow-y: auto;
+      padding-right: 3px;
+    }
+
+    .template-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: var(--panel-soft);
+      display: grid;
+      gap: 6px;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+    .template-card:hover {
+      border-color: var(--brand);
+      transform: translateY(-1px);
+    }
+
+    .template-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .template-title {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .template-tag {
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: var(--panel);
+      color: var(--brand-strong);
+      border: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    .template-desc {
+      font-size: 11px;
+      color: var(--text-soft);
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .template-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .mini-btn {
+      border: 1px solid var(--brand);
+      background: var(--panel);
+      color: var(--brand-strong);
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 9px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .mini-btn:hover {
+      background: var(--brand-glow);
+      transform: translateY(-1px);
+    }
+
+    /* ── Builder ── */
+    .builder-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field-label {
+      margin: 0 0 5px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-soft);
+    }
+
+    .builder-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .textarea-input {
+      resize: vertical;
+      min-height: 70px;
+      line-height: 1.5;
+    }
+
+    /* ── Saved / Recent ── */
+    .saved-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .saved-column h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+    }
+
+    .saved-list {
+      max-height: 180px;
+      overflow-y: auto;
+      display: grid;
+      gap: 6px;
+      padding-right: 2px;
+    }
+
+    .saved-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+      transition: border-color 0.15s ease;
+    }
+    .saved-item:hover { border-color: var(--line-strong); }
+
+    .saved-item p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.45;
+      max-height: 67px;
+      overflow: hidden;
+    }
+
+    .saved-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .icon-mini {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text-soft);
+      border-radius: 8px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      font-size: 13px;
+      display: grid;
+      place-items: center;
+      transition: all 0.15s ease;
+    }
+    .icon-mini:hover {
+      color: var(--brand-strong);
+      border-color: var(--brand);
+      transform: scale(1.08);
+    }
+
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      color: var(--text-soft);
+      font-size: 11px;
+      padding: 14px 10px;
+      text-align: center;
+    }
+
+    /* ── Composer ── */
+    .composer {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .composer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .composer-head h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .composer-head span {
+      font-size: 10px;
+      color: var(--text-soft);
+    }
+
+    #final-prompt {
+      min-height: 85px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .ai-config {
+      display: grid;
+      gap: 6px;
+    }
+
+    .ai-config-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .ai-option-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .ai-note {
+      margin: 0;
+      font-size: 10px;
+      line-height: 1.4;
+      color: var(--text-soft);
+    }
+    .ai-note code {
+      background: var(--panel-soft);
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+
+    #ai-suggestion-preview {
+      min-height: 140px;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    /* ── Main Action Buttons ── */
+    .main-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1.25fr;
+      gap: 8px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text-soft);
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 9px 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      border-color: var(--line-strong);
+      color: var(--brand-strong);
+      transform: translateY(-1px);
+    }
+
+    .btn.primary {
+      border: none;
+      background: var(--gradient-brand);
+      color: #fff;
+      box-shadow: 0 8px 20px var(--brand-glow);
+    }
+    .btn.primary:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .btn.primary:disabled {
+      background: var(--line);
+      color: var(--text-soft);
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn.accent {
+      border-color: var(--brand);
+      color: var(--brand);
+      background: var(--brand-glow);
+    }
+    .btn.accent:hover {
+      background: var(--brand);
+      color: #fff;
+    }
+    .btn.accent:disabled {
+      border-color: var(--line);
+      color: var(--text-soft);
+      background: var(--panel);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ── Keyboard Hint ── */
+    .kbd-hint {
+      font-size: 9px;
+      color: var(--text-soft);
+      text-align: right;
+      margin-top: 2px;
+    }
+    .kbd-hint kbd {
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: inherit;
+      font-size: 9px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 2px 0;
+    }
+    .footer span {
+      font-size: 9px;
+      color: var(--text-soft);
+    }
+    .footer a {
+      font-size: 9px;
+      color: var(--text-soft);
+      text-decoration: none;
+    }
+    .footer a:hover { color: var(--brand); }
+
+    /* ── Onboarding Tooltip ── */
+    .onboarding-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 100;
+    }
+    .onboarding-overlay.show { display: flex; align-items: center; justify-content: center; }
+
+    .onboarding-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 340px;
+      box-shadow: var(--shadow-strong);
+      animation: fadeSlideUp 0.35s ease-out;
+      text-align: center;
+    }
+    .onboarding-card h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .onboarding-card p {
+      margin: 0 0 14px;
+      font-size: 12px;
+      color: var(--text-soft);
+      line-height: 1.5;
+    }
+    .onboarding-card .emoji-hero {
+      font-size: 40px;
+      margin-bottom: 10px;
+    }
+    .onboarding-card .feature-list {
+      text-align: left;
+      margin: 0 0 14px;
+      padding: 0 0 0 16px;
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.8;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%) translateY(8px);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+      white-space: nowrap;
+      z-index: 200;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .toast.ok { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+    .toast.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 999px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body>
+  <!-- Onboarding Overlay (first-run) -->
+  <div class="onboarding-overlay" id="onboarding-overlay">
+    <div class="onboarding-card">
+      <div class="emoji-hero">🎨</div>
+      <h2>Welcome to Slide Command Helper!</h2>
+      <p>NotebookLM 슬라이드를 프로처럼 편집하세요.</p>
+      <ol class="feature-list">
+        <li><strong>218개 DNA 템플릿</strong>으로 즉시 프롬프트 생성</li>
+        <li><strong>빌더</strong>로 맞춤 프롬프트 조합</li>
+        <li><strong>Gemini Vision AI</strong>로 스마트 진단 & 제안</li>
+        <li><strong>원클릭 주입</strong>으로 NotebookLM에 바로 적용</li>
+      </ol>
+      <button class="btn primary" id="btn-onboarding-close" style="width:100%">시작하기 →</button>
+    </div>
+  </div>
+
+  <main class="app">
+    <section class="hero">
+      <div class="hero-top">
+        <div class="brand">
+          <div class="brand-icon">SL</div>
+          <div>
+            <h1>NotebookLM Slide Editor</h1>
+            <p>템플릿 선택 후 바로 슬라이드 수정 지시문 생성</p>
+          </div>
+        </div>
+        <div class="hero-controls">
+          <div id="status-badge" class="status-badge pending">탭 확인 중</div>
+          <button class="theme-toggle" id="btn-theme-toggle" title="테마 전환">☀️</button>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <div class="hero-meta">
+          <span class="count-badge" id="template-count">218</span>
+          <span>templates ready</span>
+        </div>
+        <button class="ghost-btn" id="btn-refresh-status">현재 탭 확인</button>
+      </div>
+    </section>
+
+    <section class="tabs">
+      <button class="tab-btn active" data-tab="templates">템플릿</button>
+      <button class="tab-btn" data-tab="builder">빌더</button>
+      <button class="tab-btn" data-tab="saved">저장/최근</button>
+    </section>
+
+    <section class="panel active" id="panel-templates">
+      <div class="toolbar">
+        <input class="search-input" id="search-input" placeholder="템플릿 검색 (예: 제목, 요약, 색상)" />
+        <div class="pills" id="category-pills"></div>
+      </div>
+      <div class="template-list" id="template-list"></div>
+    </section>
+
+    <section class="panel" id="panel-builder">
+      <div class="builder-grid">
+        <div class="builder-row">
+          <div>
+            <p class="field-label">목표</p>
+            <select class="select-input" id="builder-goal">
+              <option value="clarify">핵심 메시지 선명화</option>
+              <option value="layout">레이아웃 재정렬</option>
+              <option value="style">스타일 개선</option>
+              <option value="shorten">텍스트 압축</option>
+            </select>
+          </div>
+          <div>
+            <p class="field-label">대상</p>
+            <select class="select-input" id="builder-target">
+              <option value="entire slide">슬라이드 전체</option>
+              <option value="title">제목</option>
+              <option value="body text">본문</option>
+              <option value="image and caption">이미지/캡션</option>
+            </select>
+          </div>
+        </div>
+        <div class="builder-row">
+          <div>
+            <p class="field-label">톤</p>
+            <select class="select-input" id="builder-tone">
+              <option value="professional">전문적</option>
+              <option value="friendly">친근한</option>
+              <option value="persuasive">설득력 있는</option>
+              <option value="minimal">미니멀</option>
+            </select>
+          </div>
+          <div>
+            <p class="field-label">길이 제한</p>
+            <input class="text-input" id="builder-limit" placeholder="예: 35 words" />
+          </div>
+        </div>
+        <div>
+          <p class="field-label">추가 조건</p>
+          <textarea class="textarea-input" id="builder-details" placeholder="예: 숫자 데이터는 강조 색상 박스에 넣고 3개 bullet로 정리"></textarea>
+        </div>
+        <button class="btn accent" id="btn-builder-apply">빌더 결과 반영</button>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-saved">
+      <div class="saved-layout">
+        <div class="saved-column">
+          <h3>저장 프롬프트</h3>
+          <div class="saved-list" id="saved-list"></div>
+        </div>
+        <div class="saved-column">
+          <h3>최근 사용</h3>
+          <div class="saved-list" id="recent-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="composer">
+      <div class="composer-head">
+        <h2>최종 프롬프트</h2>
+        <span>수정 후 바로 주입 가능</span>
+      </div>
+      <textarea class="textarea-input" id="final-prompt" placeholder="템플릿을 선택하거나 빌더를 사용해 프롬프트를 생성하세요."></textarea>
+      <div class="ai-config">
+        <p class="field-label">Gemini Vision API Key</p>
+        <div class="ai-config-row">
+          <input class="text-input" id="gemini-api-key" type="password" placeholder="AIza..." autocomplete="off" spellcheck="false" />
+          <button class="btn" id="btn-toggle-api-key" type="button">표시</button>
+        </div>
+        <div class="ai-option-grid">
+          <div>
+            <p class="field-label">슬라이드 타입</p>
+            <select class="select-input" id="ai-slide-type">
+              <option value="auto">자동 분석</option>
+              <option value="business">비즈니스 보고</option>
+              <option value="pitch">피치/제안</option>
+              <option value="education">교육/강의</option>
+              <option value="data">데이터/성과</option>
+            </select>
+          </div>
+          <div>
+            <p class="field-label">개선 강도</p>
+            <select class="select-input" id="ai-improvement-level">
+              <option value="balanced">균형</option>
+              <option value="conservative">보수적</option>
+              <option value="aggressive">공격적</option>
+            </select>
+          </div>
+          <div>
+            <p class="field-label">진단 언어</p>
+            <select class="select-input" id="ai-review-language">
+              <option value="ko">한국어</option>
+              <option value="en">영어</option>
+              <option value="bilingual">한/영 병기</option>
+            </select>
+          </div>
+        </div>
+        <p class="ai-note">키는 <code>chrome.storage.local</code>에만 저장됩니다. <strong>AI 제안</strong> 버튼을 누를 때에만 Google Gemini API로 요청됩니다.</p>
+      </div>
+      <textarea class="textarea-input" id="ai-suggestion-preview" readonly placeholder="AI 수정 제안 결과가 여기에 표시됩니다."></textarea>
+      <div class="main-actions">
+        <button class="btn" id="btn-copy">복사</button>
+        <button class="btn" id="btn-save">저장</button>
+        <button class="btn accent" id="btn-ai-suggest">AI 제안</button>
+        <button class="btn primary" id="btn-inject" disabled>NotebookLM 입력</button>
+      </div>
+      <p class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> → 바로 주입</p>
+    </section>
+
+    <div class="footer">
+      <span>v3.1.0 · Slide Command Helper</span>
+      <a href="https://github.com" target="_blank">Privacy</a>
+    </div>
+  </main>
+
+  <div class="toast ok" id="toast"></div>
+
+  <script src="dna-templates.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

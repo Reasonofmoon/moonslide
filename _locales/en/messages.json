@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "NotebookLM Slide Command Helper",
+    "description": "The name of the extension displayed in the Chrome Web Store and browser."
+  },
+  "extensionDescription": {
+    "message": "Generate, save, and inject polished slide-edit prompts into NotebookLM — powered by 218 Design DNA templates and Gemini Vision AI.",
+    "description": "A short description of the extension for the Chrome Web Store listing."
+  }
+}

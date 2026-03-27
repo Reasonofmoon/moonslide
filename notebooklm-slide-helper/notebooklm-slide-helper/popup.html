@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slide Command Helper</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 380px;
+      min-height: 500px;
+      background: #0f0f1a;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid #2a4a6b;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, #4a9eff, #1a6fc4);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .header h1 { font-size: 14px; font-weight: 700; color: #fff; }
+    .header p  { font-size: 11px; color: #7a9dbf; margin-top: 1px; }
+
+    /* ── Mode tabs ── */
+    .tabs {
+      display: flex;
+      background: #131325;
+      padding: 6px 12px 0;
+      gap: 4px;
+      border-bottom: 1px solid #1e2a3a;
+    }
+    .tab-btn {
+      flex: 1; padding: 7px 4px;
+      background: none; border: none; border-bottom: 2px solid transparent;
+      color: #5a7a9a; cursor: pointer; font-size: 11px; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .tab-btn.active { color: #4a9eff; border-bottom-color: #4a9eff; }
+    .tab-btn:hover:not(.active) { color: #8ab4d4; }
+
+    /* ── Tab panels ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Search bar ── */
+    .search-wrap {
+      padding: 10px 12px 6px;
+    }
+    .search-input {
+      width: 100%; padding: 7px 10px;
+      background: #1a1a2e; border: 1px solid #2a3a4f;
+      border-radius: 6px; color: #c8d8e8; font-size: 12px;
+      outline: none;
+    }
+    .search-input:focus { border-color: #4a9eff; }
+    .search-input::placeholder { color: #445566; }
+
+    /* ── Category sections ── */
+    .categories { padding: 4px 12px 10px; }
+    .category { margin-bottom: 6px; }
+    .category-header {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 0;
+      cursor: pointer; user-select: none;
+    }
+    .category-icon { font-size: 14px; }
+    .category-name {
+      font-size: 11px; font-weight: 700; color: #7a9dbf;
+      text-transform: uppercase; letter-spacing: 0.05em; flex: 1;
+    }
+    .category-toggle { color: #445566; font-size: 10px; }
+    .category-body { display: flex; flex-wrap: wrap; gap: 5px; padding-bottom: 4px; }
+    .category-body.collapsed { display: none; }
+
+    /* ── Command chips ── */
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px;
+      background: #1a2535; border: 1px solid #2a3a50;
+      border-radius: 16px; cursor: pointer; font-size: 11px; color: #a8c4e0;
+      transition: all 0.15s; max-width: 100%;
+    }
+    .chip:hover { background: #1e3150; border-color: #4a7fcc; color: #fff; }
+    .chip.selected { background: #1a3a6e; border-color: #4a9eff; color: #7dd3ff; }
+    .chip-icon { font-size: 12px; }
+
+    /* ── Custom input ── */
+    .custom-wrap {
+      padding: 6px 12px 12px;
+      border-top: 1px solid #1e2a3a;
+    }
+    .custom-label { font-size: 11px; color: #5a7a9a; margin-bottom: 5px; }
+    .custom-input {
+      width: 100%; padding: 8px 10px;
+      background: #1a1a2e; border: 1px solid #2a3a4f;
+      border-radius: 6px; color: #c8d8e8; font-size: 12px;
+      outline: none; resize: vertical; min-height: 56px;
+    }
+    .custom-input:focus { border-color: #4a9eff; }
+
+    /* ── Preview box ── */
+    .preview-wrap {
+      margin: 0 12px 8px;
+      padding: 8px 10px;
+      background: #0e1928; border: 1px solid #1e3a5a;
+      border-radius: 6px; display: none;
+    }
+    .preview-wrap.visible { display: block; }
+    .preview-label { font-size: 10px; color: #4a7a9a; margin-bottom: 4px; }
+    .preview-text { font-size: 12px; color: #7dd3ff; word-break: break-word; }
+
+    /* ── Action buttons ── */
+    .actions {
+      padding: 8px 12px 12px;
+      display: flex; gap: 8px;
+    }
+    .btn {
+      flex: 1; padding: 9px;
+      border: none; border-radius: 7px;
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #1a4fcc);
+      color: #fff;
+    }
+    .btn-primary:hover { background: linear-gradient(135deg, #3b7afc, #2563eb); }
+    .btn-primary:disabled { background: #1a2535; color: #3a5a7a; cursor: not-allowed; }
+    .btn-secondary {
+      background: #1a2535; color: #7a9dbf; border: 1px solid #2a3a50;
+    }
+    .btn-secondary:hover { background: #1e3050; color: #a8c4e0; }
+
+    /* ── Saved tab ── */
+    .saved-list { padding: 8px 12px; max-height: 340px; overflow-y: auto; }
+    .saved-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; margin-bottom: 5px;
+      background: #1a2535; border: 1px solid #2a3a50;
+      border-radius: 8px;
+    }
+    .saved-text { flex: 1; font-size: 12px; color: #a8c4e0; word-break: break-word; }
+    .saved-actions { display: flex; gap: 4px; }
+    .icon-btn {
+      width: 26px; height: 26px;
+      background: none; border: 1px solid #2a3a50;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.1s;
+    }
+    .icon-btn:hover { background: #1e3050; border-color: #4a7fcc; }
+
+    .empty-state {
+      text-align: center; padding: 40px 20px;
+      color: #3a5a7a; font-size: 12px; line-height: 1.8;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      background: #1a4a2e; border: 1px solid #2a7a4e;
+      color: #5dca8a; padding: 8px 16px;
+      border-radius: 20px; font-size: 12px; font-weight: 600;
+      opacity: 0; transition: opacity 0.25s;
+      pointer-events: none; white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #0f0f1a; }
+    ::-webkit-scrollbar-thumb { background: #2a3a50; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">🎞</div>
+  <div>
+    <h1>Slide Command Helper</h1>
+    <p>NotebookLM 슬라이드 명령어 템플릿</p>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="commands">📋 명령어</button>
+  <button class="tab-btn" data-tab="custom">✏️ 직접입력</button>
+  <button class="tab-btn" data-tab="saved">⭐ 저장됨</button>
+</div>
+
+<!-- ── COMMANDS TAB ── -->
+<div class="tab-panel active" id="tab-commands">
+  <div class="search-wrap">
+    <input class="search-input" id="search" placeholder="🔍 명령어 검색... (예: 이미지, 텍스트, 색상)" />
+  </div>
+  <div class="categories" id="categories"></div>
+</div>
+
+<!-- ── CUSTOM TAB ── -->
+<div class="tab-panel" id="tab-custom">
+  <div style="padding:12px 12px 6px;">
+    <div class="custom-label">직접 명령어 입력</div>
+    <textarea class="custom-input" id="custom-text" placeholder="예) Move the title to the top center and make it larger"></textarea>
+  </div>
+  <div class="actions" style="border-top:none;">
+    <button class="btn btn-secondary" id="btn-save-custom">⭐ 저장</button>
+    <button class="btn btn-primary" id="btn-inject-custom">✦ 슬라이드에 입력</button>
+  </div>
+</div>
+
+<!-- ── SAVED TAB ── -->
+<div class="tab-panel" id="tab-saved">
+  <div class="saved-list" id="saved-list"></div>
+</div>
+
+<!-- Preview -->
+<div class="preview-wrap" id="preview">
+  <div class="preview-label">선택된 명령어</div>
+  <div class="preview-text" id="preview-text"></div>
+</div>
+
+<!-- Actions (commands tab) -->
+<div class="actions" id="main-actions">
+  <button class="btn btn-secondary" id="btn-save">⭐ 저장</button>
+  <button class="btn btn-primary" id="btn-inject" disabled>✦ 슬라이드에 입력</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="popup.js"></script>
+</body>
+</html>
